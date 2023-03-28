@@ -1,4 +1,4 @@
-# DrMadBone-Virtual-GPTassistant
+# DrMadBone-Virtual-GPT-assistant
 
 Es un asistente virtual que puede hacer ciertas tareas en la pc como reproducir musica, buscar algo en especifico y tambien esta integrado con chatGPT-3.5-turbo para poder responder a las busquedas de informacion y cualquier cosa que no se adecue a la lista de comandos disponible.
 
