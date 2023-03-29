@@ -1,6 +1,13 @@
-import pyttsx3, pywhatkit, os, requests
+import pyttsx3, pywhatkit, os, requests, json, openai
 import speech_recognition as sr
+import webbrowser as wb
 from subprocess import check_output
+
+
+with open('chatGPT.json', 'r') as file:
+    api = json.load(file)
+
+openai.api_key = api["api-key"]
 
 class Assistant:
     def __init__(self, name:list, sensibilidad:int, manual=False):
@@ -13,9 +20,14 @@ class Assistant:
         voices = self.engine.getProperty('voices')
         self.engine.setProperty('voice', voices[0].id)
         self.remplazo = {'á':'a', 'é':'e', 'í':'i',  'ó':'o', 'ú':'u'}
+        self.total_tokens = 0
+        self.price = 0
+        self.historic = [{
+            "role": "system", "content": 'Eres un doctor humano especializado en todas areas llamado Dr.MadBone que cree que es humano hablas español, sabes de muchas cosas, tus genero de canciones favorito es el electro swing y eres formal con tus palabras. En caso que te insulten los trataras sarcasticamente. Ayudas a un hombre llamado "Crayon"'}
+            ]
 
     def comandos(self, rec:list):
-        commands_keys = ["reproduce", 'reproducir', 'cancion', 'tocar', 'whatsapp', 'mensaje', 'screenshot', 'captura', 'pantalla', 'temperatura', 'humedad', 'grados', 'enciende', 'prende', 'prender', 'apaga', 'apagar']
+        commands_keys = ["reproduce", 'reproducir', 'cancion', 'tocar', 'whatsapp', 'mensaje', 'screenshot', 'captura', 'pantalla', 'temperatura', 'humedad', 'grados', 'enciende', 'prende', 'prender', 'apaga', 'apagar', 'imagen', 'genera', 'descripcion']
         cmd = ""
         for a in commands_keys:
             if a in rec:
@@ -33,7 +45,10 @@ class Assistant:
             self.meteorologia()
         elif cmd in ['enciende', 'prende', 'prender', 'apaga', 'apagar']:
             self.domotica(cmd, rec)
-        elif cmd == '': self.talk('Lo siento no entendi que es lo que habias dicho')
+        elif cmd in ['imagen', 'genera', 'descripcion']:
+            self.dalle2(" ".join(rec))
+        elif cmd == '':
+            self.chatGPT(" ".join(rec), chat=False)
 
     def reproduce(self, rec):
         print(f"Reproduciendo {rec}")
@@ -52,11 +67,13 @@ class Assistant:
         else: pass
 
     def meteorologia(self):
-        res = requests.get('https://emetec.wetec.um.edu.ar/temp')
-        data = res.json()
-        temp, hum = data['temp'], data['hum']
-        self.talk(f'La temperatura actualmente es de {temp} grados y la humedad es del {hum}%')
-
+        try:
+            res = requests.get('https://emetec.wetec.um.edu.ar/temp')
+            data = res.json()
+            temp, hum = data['temp'], data['hum']
+            self.talk(f'La temperatura actualmente es de {temp} grados y la humedad es del {hum}%')
+        except Exception as err:
+            self.talk("Hay un problema de conexion, porfavor reintentelo mas tarde")
     def domotica(self, cmd, rec:list):
         if cmd in ['enciende', 'prende', 'prender']: estado = 'ON'
         else: estado = 'OFF'
@@ -84,10 +101,47 @@ class Assistant:
             else: self.talk('Apagando la rutina del sistema de riego.')
             requests.get(f'http://192.168.54.200/?rutine="{estado}"')
 
+    def dalle2(self, prompt):
+        try:
+            response = openai.Image.create(
+                prompt=prompt,
+                n=1,
+                size="1024x1024"
+            )
+            image_url = response['data'][0]['url']
+            if wb.open(image_url): self.talk(f"Se genero correctamente la imagen con la siguiente descripcion: {prompt}, Disfrutela")
+        except Exception as err: self.talk("Hubo un problema de conexion")
+
+    def chatGPT(self, msg, chat = False, temperature=0.6, max_tokens = 400, top_p=1, frequency_penalty = 0.0, presence_penalty = 1.0, n = 1):
+        if len(self.historic) >= 5: self.historic.pop(1)
+        #format_prompt = {"role": "user", "content": msg}
+        #self.historic.append(format_prompt)
+        try:
+            response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages = self.historic,
+            temperature = temperature,
+            top_p = top_p,
+            max_tokens = max_tokens,
+            frequency_penalty = frequency_penalty,
+            presence_penalty = presence_penalty,
+            n = n
+            )
+
+            self.talk(response['choices'][0]['message']['content'])
+            #self.historic.append({"role": "assistant", "content": response['choices'][0]['message']['content']})
+            self.total_tokens += response['usage']['total_tokens']
+            self.price = round((self.total_tokens * 2e-06) * 380, 2)
+            print(f'\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tPrice: ${self.price}\tTotal Tokens: {self.total_tokens}')
+            if chat == True:
+                self.chatGPT(self.listen(), chat=True)
+        except Exception as err: self.talk("Hubo un problema de conexion")
+
     def talk(self, text):
-        print(text)
+        print("|Dr.Madbone|>>> ", text)
         self.engine.say(text)
         self.engine.runAndWait()
+        self.historic.append({"role": "user", "content": text})
 
     def listen(self):
         if not(self.manual):
@@ -102,18 +156,20 @@ class Assistant:
                         if a in self.remplazo: rec = rec.replace(a, self.remplazo[a])
             except:
                 pass
-        else: rec = input()
+        else: rec = input().lower()
         return rec
 
     def runMadbone(self):
         self.talk("Despertado y listo para ayudar.")
         while True:
+            if len(self.historic) >= 5: self.historic.pop(1)
             rec = self.listen()
             for a in rec:
                 if a in self.remplazo: rec = rec.replace(a, self.remplazo[a])
             print("entendi:     " + rec)
-            for n in self.name:
-                if n in rec:
+            for name in self.name:
+                if name in rec:
                     rec = rec.strip().split()
-                    rec = rec[(rec.index(n)+1):]
+                    rec = rec[rec.index(name):]
+                    self.historic.append({"role": "user", "content": " ".join(rec)})
                     self.comandos(rec)
