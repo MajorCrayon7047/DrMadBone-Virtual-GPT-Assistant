@@ -19,6 +19,8 @@ class Assistant:
         self.engine = pyttsx3.init()
         voices = self.engine.getProperty('voices')
         self.engine.setProperty('voice', voices[0].id)
+        rate = self.engine.getProperty('rate')
+        self.engine.setProperty('rate', rate+10)
         self.remplazo = {'á':'a', 'é':'e', 'í':'i',  'ó':'o', 'ú':'u'}
         self.total_tokens = 0
         self.price = 0
@@ -145,22 +147,22 @@ class Assistant:
 
     def listen(self):
         if not(self.manual):
-            try:
                 with sr.Microphone() as source:
                     print("escuchando...")
                     self.listener.adjust_for_ambient_noise(source)
                     pc = self.listener.listen(source)
-                    rec = self.listener.recognize_google(pc, language="es")
+                    try:
+                        rec = self.listener.recognize_google(pc, language="es")
+                    except:
+                        return '-'
                     rec = rec.lower()
                     for a in rec: 
                         if a in self.remplazo: rec = rec.replace(a, self.remplazo[a])
-            except:
-                pass
         else: rec = input().lower()
         return rec
 
     def runMadbone(self):
-        self.talk("Despertado y listo para ayudar.")
+        self.talk("Que se le ofrece Crayon")
         while True:
             if len(self.historic) >= 5: self.historic.pop(1)
             rec = self.listen()
@@ -170,6 +172,8 @@ class Assistant:
             for name in self.name:
                 if name in rec:
                     rec = rec.strip().split()
-                    rec = rec[rec.index(name):]
-                    self.historic.append({"role": "user", "content": " ".join(rec)})
-                    self.comandos(rec)
+                    try:
+                        rec = rec[rec.index(name):]
+                        self.historic.append({"role": "user", "content": " ".join(rec)})
+                        self.comandos(rec)
+                    except: pass
