@@ -1,34 +1,32 @@
-import pyttsx3, pywhatkit, os, requests, json, openai, io, whisper, re, pyautogui
+import pyttsx3, pywhatkit, os, requests, json, openai, poe
 import speech_recognition as sr
 import webbrowser as wb
-from subprocess import check_output
-from llama_cpp import Llama
-from pydub import AudioSegment
-from tempfile import mkdtemp
 
-#llm = Llama(model_path="Viccuna\ggml-vicuna-13b-4bit.bin")
-
-with open('chatGPT.json', 'r') as file:
-    api = json.load(file)
-
-openai.api_key = api["api-key"]
+openai.api_key = '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'
+client = poe.Client("iCD51fNG9BSu-nKoCFIfrg%3D%3D")
 
 class Assistant:
-    def __init__(self, name:list, sensibilidad:int, manual=False, offline = False):
+    def __init__(self, name:list, sensibilidad:int, manual=False, chatEngine = "poe"):
         self.name = name
         self.manual = manual
-        self.offline = offline
-        self.sensibilidad = sensibilidad
-        self.save_path = os.path.join(mkdtemp(), 'temp.wav')
+        self.listener = sr.Recognizer()
+        self.listener.energy_threshold = sensibilidad
+        self.listener.dynamic_energy_threshold = False
+        self.engine = pyttsx3.init()
+        voices = self.engine.getProperty('voices')
+        self.engine.setProperty('voice', voices[0].id)
         self.remplazo = {'á':'a', 'é':'e', 'í':'i',  'ó':'o', 'ú':'u'}
         self.total_tokens = 0
         self.price = 0
         self.historic = [{
             "role": "system", "content": 'Eres un doctor humano especializado en todas areas llamado Dr.MadBone que cree que es humano hablas español, sabes de muchas cosas, tus genero de canciones favorito es el electro swing y eres formal con tus palabras. En caso que te insulten los trataras sarcasticamente. Ayudas a un hombre llamado "Crayon"'}
             ]
+        self.historic1 = ""
+        self.chatEngine = chatEngine
+        client.send_chat_break("drmadbone1")
 
     def comandos(self, rec:list):
-        commands_keys = ["reproduce", 'reproducir', 'tocar', 'whatsapp', 'mensaje', 'screenshot', 'captura', 'pantalla', 'temperatura', 'humedad', 'grados', 'enciende', 'prende', 'prender', 'apaga', 'apagar', 'imagen', 'genera', 'descripcion', 'para', 'detiene', 'detener', 'pausa', 'pausar', 'subir', 'bajar', 'sube', 'baja', 'mutear', 'siguiente', 'adelante', 'anterior', 'atras', 'abre', 'abrir', 'ejecuta', 'ejecutar', 'descripcion', 'para', 'detiene', 'detener', 'pausa', 'despausa', 'sigue', 'continua', 'play', 'resume']
+        commands_keys = ["reproduce", 'reproducir', 'cancion', 'tocar', 'whatsapp', 'mensaje', 'screenshot', 'captura', 'pantalla', 'temperatura', 'humedad', 'grados', 'enciende', 'prende', 'prender', 'apaga', 'apagar', 'imagen', 'genera', 'descripcion']
         cmd = ""
         for a in commands_keys:
             if a in rec:
@@ -36,7 +34,7 @@ class Assistant:
                 cmd = a
                 rec = rec[pos:]
         
-        if cmd in ['reproduce', 'reproducir', 'tocar']:
+        if cmd in ['reproduce', 'reproducir', 'cancion', 'tocar']:
             self.reproduce(" ".join(rec))
         elif cmd in ['whatsapp', 'mensaje']:
             self.whatsapp()
@@ -48,46 +46,8 @@ class Assistant:
             self.domotica(cmd, rec)
         elif cmd in ['imagen', 'genera', 'descripcion']:
             self.dalle2(" ".join(rec))
-        elif cmd in ['descripcion', 'para', 'detiene', 'detener', 'pausa', 'pausar', 'despausa', 'sigue', 'continua', 'play', 'resume']:
-            self.media(action='play')
-        elif cmd in ['subir', 'bajar', 'sube', 'subir', 'baja', 'mutear', 'siguiente', 'adelante', 'anterior', 'atras']:
-            self.media(action='volume', cmd=cmd)
-        elif cmd in ['abre', 'abrir', 'ejecuta', 'ejecutar']:
-            self.app(" ".join(rec))
-        elif cmd in ['escribe']:
-            pyautogui.write(self.listen())
         elif cmd == '':
             self.chatGPT(" ".join(rec), chat=False)
-    
-    def app(self, rec):
-        print(rec)
-        if 'visual' in rec or 'studio' in rec or 'code' in rec:
-            pyautogui.hotkey('winleft', '6')
-        elif 'tareas' in rec or 'asesino' in rec or 'tarea' in rec:
-            pyautogui.hotkey('ctrl', 'shift', 'esc')
-        elif 'chrome' in rec or 'navegador' in rec:
-            pyautogui.hotkey('winleft', '3')
-        elif 'consola' in rec or 'cmd' in rec or 'shell' in rec:
-            pyautogui.hotkey('winleft', '2')
-        self.talk('listo')
-    
-    def media(self, action, cmd = None):
-        if action == 'play':
-            pyautogui.press('playpause')
-        if action == 'volume':
-            print('a')
-            if cmd in ['subir', 'sube']:
-                pyautogui.press('volumeup', 5)
-            elif cmd in ['bajar', 'subi']:
-                pyautogui.press('volumedown', 5)
-            elif 'mutear' in cmd:
-                pyautogui.press('volumemute')
-            elif cmd in ['siguiente', 'adelante']:
-                print('b')
-                pyautogui.press('nexttrack')
-            elif cmd in ['anterior', 'atras']:
-                pyautogui.press('prevtrack')
-        self.talk('Listo')
 
     def reproduce(self, rec):
         print(f"Reproduciendo {rec}")
@@ -113,6 +73,7 @@ class Assistant:
             self.talk(f'La temperatura actualmente es de {temp} grados y la humedad es del {hum}%')
         except Exception as err:
             self.talk("Hay un problema de conexion, porfavor reintentelo mas tarde")
+    
     def domotica(self, cmd, rec:list):
         if cmd in ['enciende', 'prende', 'prender']: estado = 'ON'
         else: estado = 'OFF'
@@ -151,94 +112,73 @@ class Assistant:
             if wb.open(image_url): self.talk(f"Se genero correctamente la imagen con la siguiente descripcion: {prompt}, Disfrutela")
         except Exception as err: self.talk("Hubo un problema de conexion")
 
-    def chatGPT(self, msg, chat = False, temperature=0.6, max_tokens = 400, top_p=1, frequency_penalty = 0.0, presence_penalty = 1.0, n = 1):
-        if len(self.historic) >= 5: self.historic.pop(1)
-        #format_prompt = {"role": "user", "content": msg}
-        #self.historic.append(format_prompt)
-        try:
-            response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages = self.historic,
-            temperature = temperature,
-            top_p = top_p,
-            max_tokens = max_tokens,
-            frequency_penalty = frequency_penalty,
-            presence_penalty = presence_penalty,
-            n = n
-            )
-
-            self.talk(response['choices'][0]['message']['content'])
-            #self.historic.append({"role": "assistant", "content": response['choices'][0]['message']['content']})
-            self.total_tokens += response['usage']['total_tokens']
-            self.price = round((self.total_tokens * 2e-06) * 380, 2)
-            print(f'\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tPrice: ${self.price}\tTotal Tokens: {self.total_tokens}')
-            if chat == True:
-                self.chatGPT(self.listen(), chat=True)
-        except Exception as err: self.talk("Hubo un problema de conexion")
+    def chatGPT(self, msg, chat = False, temperature=0.6, max_tokens = 1500, top_p=1, frequency_penalty = 0.0, presence_penalty = 1.0, n = 1):
+        if self.chatEngine == "openAI":
+            if len(self.historic) >= 5: self.historic.pop(1)
+            #format_prompt = {"role": "user", "content": msg}
+            #self.historic.append(format_prompt)
+            try:
+                response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages = self.historic,
+                temperature = temperature,
+                top_p = top_p,
+                max_tokens = max_tokens,
+                frequency_penalty = frequency_penalty,
+                presence_penalty = presence_penalty,
+                n = n
+                )
+                self.talk(response['choices'][0]['message']['content'])
+                #self.historic.append({"role": "assistant", "content": response['choices'][0]['message']['content']})
+                self.total_tokens += response['usage']['total_tokens']
+                self.price = round((self.total_tokens * 2e-06) * 380, 2)
+                print(f'\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tPrice: ${self.price}\tTotal Tokens: {self.total_tokens}')
+                if chat == True:
+                    self.chatGPT(self.listen(), chat=True)
+            except Exception as err: self.talk("Hubo un problema de conexion")
+        else:
+            try:
+                for chunk in client.send_message("drmadbone1", self.historic1):
+                    pass
+                self.historic1 += 'Madbone: ' + chunk['text']
+                self.talk(chunk["text"])
+            except Exception as err: self.talk("Hubo un problema de conexion", err)
 
     def talk(self, text):
-        engine = pyttsx3.init()
-        voices = engine.getProperty('voices')
-        engine.setProperty('voice', voices[0].id)
-        rate = engine.getProperty('rate')
-        engine.setProperty('rate', rate+10)
         print("|Dr.Madbone|>>> ", text)
-        engine.say(text)
-        engine.runAndWait()
+        self.engine.say(text)
+        self.engine.runAndWait()
         self.historic.append({"role": "user", "content": text})
-
+        self.historic1 += "Madbone:" + text
 
     def listen(self):
-        listener = sr.Recognizer()
-        listener.energy_threshold = self.sensibilidad
-        listener.dynamic_energy_threshold = False
         if not(self.manual):
-            if not(self.offline):
+            try:
                 with sr.Microphone() as source:
                     print("escuchando...")
-                    listener.adjust_for_ambient_noise(source)
-                    pc = listener.listen(source)
-                    try:
-                        rec = listener.recognize_google(pc, language="es")
-                    except:
-                        return '-'
-            else:
-                try:
-                    with sr.Microphone() as source:
-                        print('DI algo')
-                        listener.adjust_for_ambient_noise(source)
-                        audio = listener.listen(source)
-                        data = io.BytesIO(audio.get_wav_data())
-                        audio_clip = AudioSegment.from_file(data)
-                        audio_clip.export(self.save_path, format ='wav')
-                except Exception as e:
-                    print(e)
-                audio_model = whisper.load_model('base')
-                rec = audio_model.transcribe(self.save_path, language='spanish', fp16=False)
-                rec = rec['text']
-
-            rec = rec.lower()
-            rec = re.sub(r'[.,"\'-?:!;]', '', rec)
-            for a in rec: 
-                if a in self.remplazo: rec = rec.replace(a, self.remplazo[a])
+                    self.listener.adjust_for_ambient_noise(source)
+                    pc = self.listener.listen(source)
+                    rec = self.listener.recognize_google(pc, language="es")
+                    rec = rec.lower()
+                    for a in rec: 
+                        if a in self.remplazo: rec = rec.replace(a, self.remplazo[a])
+            except:
+                pass
         else: rec = input().lower()
-        return str(rec)
+        return rec
 
     def runMadbone(self):
-        self.talk("Que se le ofrece Crayon")
+        self.talk("Hola Crayon, ¿en que puedo ayudarte hoy?")
         while True:
             if len(self.historic) >= 5: self.historic.pop(1)
             rec = self.listen()
             for a in rec:
                 if a in self.remplazo: rec = rec.replace(a, self.remplazo[a])
-            print("entendi:     " + rec, type(rec))
-            rec = rec.strip()
-            rec = rec.split()
+            print("entendi:     " + rec)
             for name in self.name:
                 if name in rec:
-                    try:
-                        rec = rec[rec.index(name):]
-                        self.historic.append({"role": "user", "content": " ".join(rec)})
-                        self.comandos(rec)
-                    except Exception as err:
-                        print(err)
+                    rec = rec.strip().split()
+                    rec = rec[rec.index(name):]
+                    self.historic.append({"role": "user", "content": " ".join(rec)})
+                    self.historic1 += "User: " + " ".join(rec)
+                    self.comandos(rec)
